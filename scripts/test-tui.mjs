@@ -17,8 +17,8 @@ import { setTimeout } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
-const core = resolve(process.env.PI_SIDEBAR_CORE || join(root, ".pi-core"));
-if (!existsSync(join(core, "pi-test.sh"))) throw new Error("Run pnpm setup:core before test:tui.");
+const piBin = resolve(process.env.PI_SIDEBAR_TEST_PI || join(root, "node_modules/.bin/pi"));
+if (!existsSync(piBin)) throw new Error("Install dependencies or set PI_SIDEBAR_TEST_PI to a stock Pi executable.");
 const temporary = realpathSync(mkdtempSync(join(tmpdir(), "pi-sidebar-tui-")));
 const agentDir = join(temporary, "agent");
 const project = join(temporary, "project-a");
@@ -45,6 +45,10 @@ writeFileSync(
 		defaultProjectTrust: "always",
 		enableAnalytics: false,
 		enableInstallTelemetry: false,
+		packages: [
+			root,
+			...(process.env.PI_SIDEBAR_TEST_USAGE_BAR ? [resolve(process.env.PI_SIDEBAR_TEST_USAGE_BAR)] : []),
+		],
 	}),
 );
 writeFileSync(join(agentDir, "keybindings.json"), JSON.stringify({ "app.tools.expand": [] }));
@@ -100,12 +104,10 @@ const quote = (text) => `'${text.replaceAll("'", "'\\''")}'`;
 const command = [
 	"env",
 	`PI_CODING_AGENT_DIR=${agentDir}`,
-	`PI_SIDEBAR_CORE=${core}`,
 	`PI_SIDEBAR_TEST_PID_FILE=${pidFile}`,
-	...(process.env.PI_SIDEBAR_TEST_LAUNCHER
-		? [process.env.PI_SIDEBAR_TEST_LAUNCHER]
-		: [process.execPath, join(root, "scripts/pi.mjs")]),
-	"--no-extensions",
+	process.execPath,
+	join(root, "test/launch-pi.mjs"),
+	piBin,
 	"--extension",
 	join(root, "test/faux-provider.ts"),
 	"--provider",
@@ -125,7 +127,18 @@ try {
 		"Sidebar did not mount",
 	);
 	assert.ok(screen.split("\n").filter((line) => line.includes("│")).length >= 25);
-	console.log("PASS pinned sidebar mounts without replacing the editor");
+	assert.equal(
+		screen
+			.split("\n")
+			.find((line) => line.includes("│ Sessions"))
+			?.indexOf("│"),
+		98,
+	);
+	literal("\x1b[<0;101;1M");
+	await waitFor(() => cursorColumn() >= 98, "Mouse click did not focus the sidebar");
+	key("Escape");
+	await waitFor(() => cursorColumn() < 10, "Mouse focus did not return to the editor");
+	console.log("PASS pinned sidebar reserves 42 columns and supports mouse focus without replacing the editor");
 
 	literal("unsent draft");
 	key("C-o");

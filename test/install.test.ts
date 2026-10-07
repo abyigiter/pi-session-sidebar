@@ -7,45 +7,43 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 const installer = fileURLToPath(new URL("../scripts/install-local.mjs", import.meta.url));
-const launcher = fileURLToPath(new URL("../scripts/pi.mjs", import.meta.url));
-
+const source = fileURLToPath(new URL("../src", import.meta.url));
 function install(directory: string) {
 	return spawnSync(process.execPath, [installer], {
-		env: { ...process.env, PI_SIDEBAR_BIN_DIR: directory },
+		env: { ...process.env, PI_SIDEBAR_EXTENSION_DIR: directory },
 		encoding: "utf8",
 	});
 }
 
-test("local installation creates a runnable symlink and can be repeated", (t) => {
+test("local installation registers an auto-discovered extension and can be repeated", (t) => {
 	const temporary = mkdtempSync(join(tmpdir(), "pi-sidebar-install-"));
 	t.after(() => rmSync(temporary, { recursive: true, force: true }));
-	const bin = join(temporary, "bin");
-	const command = join(bin, "pi-session-sidebar");
-	assert.equal(install(bin).status, 0);
-	assert.ok(lstatSync(command).isSymbolicLink());
-	assert.equal(resolve(bin, readlinkSync(command)), launcher);
-	assert.ok(lstatSync(launcher).mode & 0o111);
-	assert.equal(install(bin).status, 0);
+	const directory = join(temporary, "extensions");
+	const target = join(directory, "pi-session-sidebar");
+	assert.equal(install(directory).status, 0);
+	assert.ok(lstatSync(target).isSymbolicLink());
+	assert.equal(resolve(directory, readlinkSync(target)), source);
+	assert.equal(install(directory).status, 0);
 });
 
-test("local installation refuses to replace an existing executable", (t) => {
-	const bin = mkdtempSync(join(tmpdir(), "pi-sidebar-install-"));
-	t.after(() => rmSync(bin, { recursive: true, force: true }));
-	const command = join(bin, "pi-session-sidebar");
-	writeFileSync(command, "existing command");
-	const result = install(bin);
+test("local installation refuses to replace an existing extension file", (t) => {
+	const directory = mkdtempSync(join(tmpdir(), "pi-sidebar-install-"));
+	t.after(() => rmSync(directory, { recursive: true, force: true }));
+	const target = join(directory, "pi-session-sidebar");
+	writeFileSync(target, "existing extension");
+	const result = install(directory);
 	assert.notEqual(result.status, 0);
-	assert.match(result.stderr, /Refusing to replace existing command/);
-	assert.equal(readFileSync(command, "utf8"), "existing command");
+	assert.match(result.stderr, /Refusing to replace existing extension/);
+	assert.equal(readFileSync(target, "utf8"), "existing extension");
 });
 
-test("local installation refuses to replace a different or dangling symlink", (t) => {
-	const bin = mkdtempSync(join(tmpdir(), "pi-sidebar-install-"));
-	t.after(() => rmSync(bin, { recursive: true, force: true }));
-	const command = join(bin, "pi-session-sidebar");
-	symlinkSync("missing-launcher", command);
-	const result = install(bin);
+test("local installation refuses to replace a different or dangling extension symlink", (t) => {
+	const directory = mkdtempSync(join(tmpdir(), "pi-sidebar-install-"));
+	t.after(() => rmSync(directory, { recursive: true, force: true }));
+	const target = join(directory, "pi-session-sidebar");
+	symlinkSync("missing-extension", target);
+	const result = install(directory);
 	assert.notEqual(result.status, 0);
-	assert.match(result.stderr, /Refusing to replace existing command/);
-	assert.equal(readlinkSync(command), "missing-launcher");
+	assert.match(result.stderr, /Refusing to replace existing extension/);
+	assert.equal(readlinkSync(target), "missing-extension");
 });

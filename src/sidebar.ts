@@ -16,7 +16,6 @@ type SidebarTUI = Pick<TUI, "requestRender"> & { terminal: Pick<TUI["terminal"],
 type SidebarTheme = Pick<Theme, "fg" | "bold">;
 
 export class SessionSidebar implements Component, Focusable {
-	readonly captureViewportInput = true;
 	private readonly input: Input;
 	private readonly tui: SidebarTUI;
 	private readonly theme: SidebarTheme;

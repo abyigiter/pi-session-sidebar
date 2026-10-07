@@ -1,13 +1,13 @@
 # Pi Session Sidebar
 
-A pinned session picker on the right side of [Pi](https://pi.dev). The chat, prompt editor, and footer keep their own column, rather than being covered by an overlay.
+A Pi extension that pins a session picker on the right and **shrinks the chat to make room**. It preserves Pi's existing transcript, editor, footer, scrolling, and other widgets. It is not an overlay.
 
-**Experimental: requires the included Pi 1.0.0 core patch. This is not a drop-in pinned sidebar for stock Pi.** Setup creates a separate source checkout; it does not replace your existing `pi` installation.
+Install it once, then run normal `pi`. No separate launcher, fork, core patch, or special Pi command is required.
 
 ```text
 Pi conversation                         │ Sessions
                                         │ Current project
-Transcript keeps its own scroll area    │ > Search sessions…
+Transcript has its own scroll area      │ > Search sessions…
                                         │
                                         │ › ● Fix auth redirect
                                         │     my-project · 8m ago
@@ -17,34 +17,33 @@ Pi footer                               │ Enter open · Esc back
 
 ## Install
 
-Requires macOS or Linux, Node.js 22.19.0 or newer, pnpm 10, Git, npm, and tar. tmux is only needed for terminal tests.
+Requires Pi 1.0.x and Node.js 22.19.0 or newer. Tested with stock Pi 1.0.0 and 1.0.4.
+
+```sh
+pi install git:github.com/abyigiter/pi-session-sidebar
+```
+
+Run `/reload` in an existing session, or start `pi` normally from your project directory:
+
+```sh
+cd /path/to/your/project
+pi
+```
+
+Pi handles loading and updating this package just like other extensions, including `claude-usage-bar`. The sidebar appears by default in fullscreen mode.
+
+For local development:
 
 ```sh
 git clone https://github.com/abyigiter/pi-session-sidebar.git
 cd pi-session-sidebar
 pnpm install --frozen-lockfile --ignore-scripts
-pnpm setup:core
 pnpm install:local
 ```
 
-The installer links `pi-session-sidebar` into `~/.local/bin` and refuses to overwrite an unrelated existing command. Keep the checkout: the command points to its launcher and picks up changes from it.
+The local installer links `src/` into Pi's extensions directory so normal `pi` auto-discovers `index.ts`. It does not modify Pi executables, shell configuration, or credentials. Keep the checkout in place. The installer can be rerun and refuses to overwrite an unrelated existing extension.
 
-If `~/.local/bin` is not on your PATH, add this to your shell configuration:
-
-```sh
-export PATH="$HOME/.local/bin:$PATH"
-```
-
-Start it from the project you want to work in:
-
-```sh
-cd /path/to/your/project
-pi-session-sidebar
-```
-
-The launcher preserves your working directory and forwards CLI arguments to the patched Pi. It uses your normal Pi configuration, credentials, themes, extensions, and session storage. The standard `pi` command stays unchanged; no global extension is added to stock Pi.
-
-Without installing a command, run `node /path/to/pi-session-sidebar/scripts/pi.mjs` from your project, or `pnpm pi` from this checkout.
+`PI_CODING_AGENT_DIR` selects a custom Pi agent directory. `PI_SIDEBAR_EXTENSION_DIR` overrides the extension directory for local installation.
 
 ## Controls
 
@@ -53,35 +52,23 @@ Without installing a command, run `node /path/to/pi-session-sidebar/scripts/pi.m
 | `Ctrl+O` while the sidebar is mounted | Move focus between the editor and sidebar |
 | `Ctrl+Shift+S` or `/sessions` | Show/focus the sidebar, or return to the editor if already focused |
 | Type in sidebar search | Match session names, first prompts, and project paths |
-| `Up` / `Down`, `PageUp` / `PageDown` | Navigate results |
+| `Up` / `Down`, `PageUp` / `PageDown` | Navigate results without scrolling the transcript |
 | `Tab` in the sidebar | Switch current-project/all-project scope |
 | `Enter` in the sidebar | Resume the selected session |
 | `Escape` in the sidebar | Return to the editor without hiding the sidebar |
 | `/sessions toggle` | Hide/show the sidebar and reclaim/reserve its width |
 
-Sessions are ordered by recent activity. The active session is marked with `●`. Switching is blocked while the agent is busy or has queued messages; a non-empty text draft requires confirmation. Existing modal dialogs retain focus priority. Rename and delete remain available through Pi's built-in `/resume` picker.
+Sessions are ordered by recent activity. The active session is marked with `●`. Switching is blocked while the agent is busy or has queued messages; a non-empty text draft requires confirmation. Existing dialogs retain focus priority. Rename and delete remain in Pi's built-in `/resume` picker.
 
-The sidebar reserves 42 columns in fullscreen mode. It collapses below 102 terminal columns or 12 rows and returns focus to the editor if necessary. It does not draw a pinned panel in regular, RPC, JSON, or print mode.
+The sidebar reserves 42 columns. It collapses below 102 terminal columns or 12 rows and returns focus to the editor. It does not draw a pinned panel in regular, RPC, JSON, or print mode.
 
-## Core patch and configuration
+## Compatibility
 
-`pnpm setup:core` clones Pi v1.0.0 at commit `a13d35a742c6ef8462812a28fbe1d8c8b7431c32`, applies `patches/pi-1.0.0-sidebar.patch`, and installs dependencies with lifecycle scripts disabled. Model data comes from the matching published Pi AI 1.0.0 package, not live provider catalogs. No build is required to run the source launcher.
+**Experimental:** Pi exposes a public layout setter, but not a layout getter or input-listener priority. `src/layout.ts` isolates guarded access to the internal `layoutRoot` and `inputListeners` fields. It composes the original root with an `HStack`, rather than rebuilding Pi's transcript or replacing terminal rendering. Disposal restores the original root and removes only this extension's input handler.
 
-The patch adds a fullscreen sidebar hook and keyboard-focus handling while keeping Pi's existing chat viewport. It has not been accepted upstream.
+If Pi changes these internal contracts, the adapter reports an unsupported layout instead of installing the sidebar. Extensions that also replace the entire TUI layout may conflict. Above/below-editor widgets, including the usage bar, remain in the original chat column.
 
-| Environment variable | Purpose |
-| --- | --- |
-| `PI_SIDEBAR_CORE` | Use a different core checkout instead of `.pi-core` under this repository |
-| `PI_SIDEBAR_BIN_DIR` | Install the local command somewhere other than `~/.local/bin` |
-
-A custom core checkout must be at the pinned revision. Setup refuses to apply the patch to a dirty, unpatched checkout. It recognizes an already-applied patch and can be rerun.
-
-**Security:** Pi runs with your operating-system permissions; this patch does not add sandboxing. The pinned upstream source workspace audit reported one critical and three high production-dependency advisories during initial verification, including `shell-quote`, `brace-expansion`, and Gondolin's `node-forge` dependency. These are inherited from the upstream lockfile; their runtime reachability has not been established. Inspect the current report with:
-
-```sh
-cd .pi-core
-npm audit --omit=dev
-```
+There are no runtime dependencies beyond Pi's host-provided packages. Like other Pi extensions, this runs with Pi's operating-system permissions and does not add sandboxing.
 
 ## Verification
 
@@ -92,13 +79,14 @@ pnpm test
 pnpm test:tui
 ```
 
-Terminal tests require the patched core and tmux. They use an isolated Pi configuration, temporary sessions, and a local faux provider, without paid model calls. They cover search, draft protection, streaming and busy-switch guards, cross-project resume, resizing, reload, modal focus, and regular/fullscreen transitions. A paused-process resize check ensures tmux clipping is not mistaken for Pi having rendered the new layout and restored editor focus.
+Terminal tests require tmux. They launch **unmodified stock Pi** with an isolated configuration that installs this repository as a local package. A local faux provider supplies responses without paid calls. Tests cover draft protection, streaming, busy-switch guards, cross-project resume, resize, reload, modal focus, and regular/fullscreen transitions. A paused-process resize check distinguishes tmux clipping from an application-rendered frame.
 
-To exercise an installed launcher or a custom theme:
+To test another stock Pi executable, theme, or the usage-bar package:
 
 ```sh
-PI_SIDEBAR_TEST_LAUNCHER="$HOME/.local/bin/pi-session-sidebar" pnpm test:tui
+PI_SIDEBAR_TEST_PI=/path/to/pi pnpm test:tui
 PI_SIDEBAR_TEST_THEME=/path/to/theme.json pnpm test:tui
+PI_SIDEBAR_TEST_USAGE_BAR=/path/to/claude-usage-bar pnpm test:tui
 ```
 
-GitHub Actions also runs the patched core's checks and focused coding-agent/TUI tests. The extension is MIT licensed; the bundled patch includes Pi's license in `LICENSE.pi`.
+GitHub Actions checks stock Pi 1.0.0 and 1.0.4. The extension is MIT licensed.

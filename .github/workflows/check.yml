@@ -10,6 +10,9 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        pi: ['1.0.0', '1.0.4']
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -21,12 +24,8 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
-      - run: pnpm setup:core
-      - run: npm run check
-        working-directory: .pi-core
-      - run: node ../../node_modules/vitest/dist/cli.js --run test/sidebar-layout.test.ts test/chat-viewport.test.ts test/interactive-mode-status.test.ts test/extensions-runner.test.ts
-        working-directory: .pi-core/packages/coding-agent
-      - run: node --test test/sidebar-input.test.ts test/tui-alt-screen.test.ts
-        working-directory: .pi-core/packages/tui
+      - run: npm install --prefix "$RUNNER_TEMP/stock-pi" --ignore-scripts --no-save --no-package-lock "@earendil-works/pi-coding-agent@${{ matrix.pi }}"
       - run: sudo apt-get update && sudo apt-get install -y tmux
       - run: pnpm test:tui
+        env:
+          PI_SIDEBAR_TEST_PI: ${{ runner.temp }}/stock-pi/node_modules/.bin/pi
