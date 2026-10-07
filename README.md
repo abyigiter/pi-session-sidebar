@@ -4,16 +4,9 @@ A Pi extension that pins a session picker on the right and **shrinks the chat to
 
 Install it once, then run normal `pi`. No separate launcher, fork, core patch, or special Pi command is required.
 
-```text
-Pi conversation                         │ Sessions
-                                        │ Current project
-Transcript has its own scroll area      │ > Search sessions…
-                                        │
-                                        │ › ● Fix auth redirect
-                                        │     my-project · 8m ago
-Prompt editor                           │
-Pi footer                               │ Enter open · Esc back
-```
+![Pi with a narrower chat column, a pinned session sidebar, and the usage-bar widget](assets/session-sidebar.png)
+
+*Demo with generated sessions. The sidebar reserves space instead of covering the chat, and the usage bar stays in the chat column.*
 
 ## Install
 
