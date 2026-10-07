@@ -1,14 +1,53 @@
 {
-  "name": "pi-session-sidebar",
-  "version": "0.1.0",
-  "description": "Pinned session sidebar for Pi, with a version-pinned core layout patch.",
-  "type": "module",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/abyigiter/pi-session-sidebar.git"
-  },
-  "engines": {
-    "node": ">=22.19.0"
-  }
+	"name": "pi-session-sidebar",
+	"version": "0.1.0",
+	"description": "Pinned session sidebar for Pi, with a version-pinned core layout patch.",
+	"type": "module",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/abyigiter/pi-session-sidebar.git"
+	},
+	"engines": {
+		"node": ">=22.19.0"
+	},
+	"keywords": [
+		"pi-package",
+		"pi",
+		"sessions",
+		"sidebar"
+	],
+	"pi": {
+		"extensions": [
+			"./src/index.ts"
+		]
+	},
+	"files": [
+		"src",
+		"scripts",
+		"patches",
+		"LICENSE",
+		"LICENSE.pi"
+	],
+	"scripts": {
+		"lint": "biome check src test scripts package.json tsconfig.json biome.json",
+		"typecheck": "tsc --noEmit",
+		"test": "node --test test/*.test.ts",
+		"test:tui": "node scripts/test-tui.mjs",
+		"setup:core": "node scripts/setup-core.mjs",
+		"pi": "node scripts/pi.mjs"
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-coding-agent": "*",
+		"@earendil-works/pi-tui": "*"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.3.5",
+		"@earendil-works/pi-ai": "1.0.0",
+		"@earendil-works/pi-coding-agent": "1.0.0",
+		"@earendil-works/pi-tui": "1.0.0",
+		"@types/node": "22.19.19",
+		"typescript": "7.0.2"
+	},
+	"packageManager": "pnpm@10.28.2"
 }
