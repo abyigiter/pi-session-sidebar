@@ -4,27 +4,13 @@ import type {
 	ExtensionCommandContext,
 	ExtensionContext,
 	ExtensionUIContext,
-	KeybindingsManager,
-	Theme,
 } from "@earendil-works/pi-coding-agent";
-import { type Component, type Focusable, matchesKey, type TUI } from "@earendil-works/pi-tui";
+import { getKeybindings, matchesKey } from "@earendil-works/pi-tui";
+import { SidebarLayout } from "./layout.ts";
 import { createSessionLoader } from "./sessions.ts";
 import { SessionSidebar } from "./sidebar.ts";
 
-interface SidebarHandle {
-	focus(): boolean;
-	unfocus(): void;
-	isFocused(): boolean;
-}
-
-type SidebarUI = ExtensionUIContext & {
-	setSidebar?: (
-		factory:
-			| ((tui: TUI, theme: Theme, keys: KeybindingsManager) => Component & Focusable & { dispose?(): void })
-			| undefined,
-		options?: { width?: number; minChatWidth?: number },
-	) => SidebarHandle | undefined;
-};
+const WIDGET = "session-sidebar-layout";
 
 type ResumeContext = Pick<ExtensionCommandContext, "isIdle" | "hasPendingMessages" | "switchSession"> & {
 	ui: Pick<ExtensionUIContext, "notify" | "confirm" | "getEditorText">;
@@ -54,48 +40,66 @@ export async function resumeSession(ctx: ResumeContext, path: string): Promise<v
 
 export default function sessionSidebar(pi: ExtensionAPI): void {
 	let panel: SessionSidebar | undefined;
-	let handle: SidebarHandle | undefined;
+	let layout: SidebarLayout | undefined;
 	let visible = true;
 	let selectedPath: string | undefined;
 	let unsubscribeInput: (() => void) | undefined;
 
 	const mount = (ctx: ExtensionContext): void => {
-		if (ctx.mode !== "tui") return;
-		const ui = ctx.ui as SidebarUI;
-		if (!ui.setSidebar) {
-			ctx.ui.notify("Pinned sidebar requires the Pi 1.0.0 layout patch. Run pnpm setup:core, then pnpm pi.", "warning");
-			return;
-		}
-		const storage = ctx.sessionManager as ExtensionContext["sessionManager"] & { usesDefaultSessionDir(): boolean };
-		handle = ui.setSidebar(
-			(tui, theme, keys) => {
+		ctx.ui.setWidget(
+			WIDGET,
+			(tui, _theme) => {
+				const piKeys = getKeybindings();
 				panel = new SessionSidebar({
 					tui,
-					theme,
-					keys,
-					load: createSessionLoader(ctx.cwd, storage.getSessionDir(), storage.usesDefaultSessionDir()),
+					theme: { fg: (token, text) => ctx.ui.theme.fg(token, text), bold: (text) => ctx.ui.theme.bold(text) },
+					keys: piKeys,
+					load: createSessionLoader(
+						ctx.cwd,
+						ctx.sessionManager.getSessionDir(),
+						(
+							ctx.sessionManager as ExtensionContext["sessionManager"] & { usesDefaultSessionDir(): boolean }
+						).usesDefaultSessionDir(),
+					),
 					activePath: ctx.sessionManager.getSessionFile(),
-					onUnfocus: () => handle?.unfocus(),
+					onUnfocus: () => layout?.unfocus(),
 					onSelect: () => {
 						selectedPath = panel?.getSelectedSession()?.path;
-						handle?.unfocus();
+						layout?.unfocus();
 						if (selectedPath) pi.sendUserMessage("/sessions open", { expandPromptTemplates: true });
 					},
 				});
-				return panel;
+				try {
+					layout = new SidebarLayout(
+						tui,
+						panel,
+						(data) => piKeys.matches(data, "tui.altScreen.search"),
+						(message) => {
+							panel?.dispose();
+							layout = undefined;
+							ctx.ui.notify(message, "warning");
+						},
+					);
+					void panel.refresh();
+					return layout;
+				} catch (err) {
+					panel.dispose();
+					layout = undefined;
+					ctx.ui.notify(err instanceof Error ? err.message : String(err), "warning");
+					return { render: () => [], invalidate: () => {} };
+				}
 			},
-			{ width: 42, minChatWidth: 60 },
+			{ placement: "belowEditor" },
 		);
-		if (handle) void panel?.refresh();
 	};
 
 	pi.on("session_start", (_event, ctx) => {
 		if (ctx.mode !== "tui") return;
 		if (visible) mount(ctx);
 		unsubscribeInput = ctx.ui.onTerminalInput((data) => {
-			if (!matchesKey(data, "ctrl+o") || !handle) return undefined;
-			if (handle.isFocused()) handle.unfocus();
-			else if (handle.focus()) void panel?.refresh();
+			if (!matchesKey(data, "ctrl+o") || !layout) return undefined;
+			if (layout.isFocused()) layout.unfocus();
+			else if (layout.focus()) void panel?.refresh();
 			else return undefined;
 			return { consume: true };
 		});
@@ -109,9 +113,10 @@ export default function sessionSidebar(pi: ExtensionAPI): void {
 	pi.on("session_shutdown", () => {
 		unsubscribeInput?.();
 		unsubscribeInput = undefined;
+		layout?.dispose();
 		panel?.dispose();
 		panel = undefined;
-		handle = undefined;
+		layout = undefined;
 		selectedPath = undefined;
 	});
 
@@ -128,24 +133,22 @@ export default function sessionSidebar(pi: ExtensionAPI): void {
 			if (args.trim() === "toggle") {
 				visible = !visible;
 				if (!visible) {
-					(ctx.ui as SidebarUI).setSidebar?.(undefined);
+					ctx.ui.setWidget(WIDGET, undefined);
+					panel?.dispose();
 					panel = undefined;
-					handle = undefined;
+					layout = undefined;
 					return;
 				}
 			}
 			visible = true;
-			if (!handle) mount(ctx);
-			if (handle?.isFocused()) {
-				handle.unfocus();
-			} else if (handle?.focus()) {
-				void panel?.refresh();
-			} else if (handle) {
-				ctx.ui.notify("Sidebar needs fullscreen mode and at least 102 columns by 12 rows.", "info");
-			}
+			if (!layout) mount(ctx);
+			if (layout?.isFocused()) layout.unfocus();
+			else if (layout?.focus()) void panel?.refresh();
+			else if (layout) ctx.ui.notify("Sidebar needs fullscreen mode and at least 102 columns by 12 rows.", "info");
 		},
 	});
-
-	const focusSidebar = () => pi.sendUserMessage("/sessions", { expandPromptTemplates: true });
-	pi.registerShortcut("ctrl+shift+s", { description: "Focus the session sidebar", handler: focusSidebar });
+	pi.registerShortcut("ctrl+shift+s", {
+		description: "Focus the session sidebar",
+		handler: () => pi.sendUserMessage("/sessions", { expandPromptTemplates: true }),
+	});
 }

@@ -1,7 +1,7 @@
 {
 	"name": "pi-session-sidebar",
 	"version": "0.1.0",
-	"description": "Pinned session sidebar for Pi, with a version-pinned core layout patch.",
+	"description": "Pinned session sidebar that reserves a right-hand column in stock Pi.",
 	"type": "module",
 	"license": "MIT",
 	"repository": {
@@ -24,18 +24,14 @@
 	},
 	"files": [
 		"src",
-		"scripts",
-		"patches",
-		"LICENSE",
-		"LICENSE.pi"
+		"LICENSE"
 	],
 	"scripts": {
 		"lint": "biome check src test scripts package.json tsconfig.json biome.json",
 		"typecheck": "tsc --noEmit",
 		"test": "node --test test/*.test.ts",
 		"test:tui": "node scripts/test-tui.mjs",
-		"setup:core": "node scripts/setup-core.mjs",
-		"pi": "node scripts/pi.mjs"
+		"install:local": "node scripts/install-local.mjs"
 	},
 	"peerDependencies": {
 		"@earendil-works/pi-coding-agent": "*",

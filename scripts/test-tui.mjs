@@ -17,14 +17,15 @@ import { setTimeout } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
-const core = resolve(process.env.PI_SIDEBAR_CORE || join(root, ".pi-core"));
-if (!existsSync(join(core, "pi-test.sh"))) throw new Error("Run pnpm setup:core before test:tui.");
+const piBin = resolve(process.env.PI_SIDEBAR_TEST_PI || join(root, "node_modules/.bin/pi"));
+if (!existsSync(piBin)) throw new Error("Install dependencies or set PI_SIDEBAR_TEST_PI to a stock Pi executable.");
 const temporary = realpathSync(mkdtempSync(join(tmpdir(), "pi-sidebar-tui-")));
 const agentDir = join(temporary, "agent");
 const project = join(temporary, "project-a");
 const otherProject = join(temporary, "project-b");
 const server = `pi-sidebar-${process.pid}`;
 const sessionName = "sidebar-test";
+const pidFile = join(temporary, "pi.pid");
 mkdirSync(agentDir);
 mkdirSync(project);
 mkdirSync(otherProject);
@@ -44,6 +45,10 @@ writeFileSync(
 		defaultProjectTrust: "always",
 		enableAnalytics: false,
 		enableInstallTelemetry: false,
+		packages: [
+			root,
+			...(process.env.PI_SIDEBAR_TEST_USAGE_BAR ? [resolve(process.env.PI_SIDEBAR_TEST_USAGE_BAR)] : []),
+		],
 	}),
 );
 writeFileSync(join(agentDir, "keybindings.json"), JSON.stringify({ "app.tools.expand": [] }));
@@ -79,6 +84,7 @@ function tmux(...args) {
 	return result.stdout;
 }
 const capture = () => tmux("capture-pane", "-t", sessionName, "-p");
+const cursorColumn = () => Number(tmux("display-message", "-p", "-t", sessionName, "#{cursor_x}").trim());
 const key = (...keys) => {
 	tmux("send-keys", "-t", sessionName, ...keys);
 	// Bare Escape must resolve before subsequent text can be mistaken for Alt+key.
@@ -98,10 +104,10 @@ const quote = (text) => `'${text.replaceAll("'", "'\\''")}'`;
 const command = [
 	"env",
 	`PI_CODING_AGENT_DIR=${agentDir}`,
-	`PI_SIDEBAR_CORE=${core}`,
+	`PI_SIDEBAR_TEST_PID_FILE=${pidFile}`,
 	process.execPath,
-	join(root, "scripts/pi.mjs"),
-	"--no-extensions",
+	join(root, "test/launch-pi.mjs"),
+	piBin,
 	"--extension",
 	join(root, "test/faux-provider.ts"),
 	"--provider",
@@ -121,7 +127,18 @@ try {
 		"Sidebar did not mount",
 	);
 	assert.ok(screen.split("\n").filter((line) => line.includes("│")).length >= 25);
-	console.log("PASS pinned sidebar mounts without replacing the editor");
+	assert.equal(
+		screen
+			.split("\n")
+			.find((line) => line.includes("│ Sessions"))
+			?.indexOf("│"),
+		98,
+	);
+	literal("\x1b[<0;101;1M");
+	await waitFor(() => cursorColumn() >= 98, "Mouse click did not focus the sidebar");
+	key("Escape");
+	await waitFor(() => cursorColumn() < 10, "Mouse focus did not return to the editor");
+	console.log("PASS pinned sidebar reserves 42 columns and supports mouse focus without replacing the editor");
 
 	literal("unsent draft");
 	key("C-o");
@@ -134,7 +151,10 @@ try {
 	key("Escape");
 	await setTimeout(150);
 	literal(" still here");
-	assert.ok(capture().includes("unsent draft still here"));
+	await waitFor(
+		(text) => text.includes("unsent draft still here"),
+		"Editor draft did not redraw after returning focus",
+	);
 	assert.equal(readdirSync(dirname(target)).filter((name) => name.endsWith(".jsonl")).length, 2);
 	console.log("PASS Ctrl+O search and Escape preserve the editor draft without starting a model turn");
 
@@ -183,10 +203,24 @@ try {
 	console.log("PASS all-project search and cross-project resume");
 
 	key("C-o");
-	tmux("resize-window", "-t", sessionName, "-x", "80", "-y", "24");
-	await waitFor((text) => !text.includes("Enter open"), "Narrow terminal did not collapse sidebar");
+	await waitFor(() => cursorColumn() >= 98, "Sidebar did not receive focus before resize");
+	const piPid = Number(readFileSync(pidFile, "utf8").trim());
+	assert.ok(Number.isSafeInteger(piPid) && piPid > 1 && piPid !== process.pid);
+	process.kill(piPid, "SIGSTOP");
+	try {
+		tmux("resize-window", "-t", sessionName, "-x", "80", "-y", "24");
+		// tmux can clip the sidebar before Pi handles resize or transfers focus.
+		assert.ok(!capture().includes("Enter open"));
+		assert.ok(cursorColumn() >= 10, "Clipped tmux output incorrectly indicated editor focus");
+	} finally {
+		process.kill(piPid, "SIGCONT");
+	}
+	await waitFor(
+		(text) => !text.includes("Enter open") && cursorColumn() < 10,
+		"Pi did not render the narrow layout and return focus to the editor",
+	);
 	literal("draft after resize");
-	assert.ok(capture().includes("draft after resize"));
+	await waitFor((text) => text.includes("draft after resize"), "Editor draft did not redraw after resize");
 	tmux("resize-window", "-t", sessionName, "-x", "140", "-y", "32");
 	await waitFor(
 		(text) => text.includes("Sessions") && text.includes("draft after resize"),
