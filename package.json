@@ -1,0 +1,14 @@
+{
+  "name": "pi-session-sidebar",
+  "version": "0.1.0",
+  "description": "Pinned session sidebar for Pi, with a version-pinned core layout patch.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abyigiter/pi-session-sidebar.git"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  }
+}
