@@ -1,3 +1,4 @@
+import { writeFileSync } from "node:fs";
 import { fauxAssistantMessage, registerFauxProvider } from "@earendil-works/pi-ai/compat";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
@@ -17,6 +18,10 @@ export default function (pi: ExtensionAPI): void {
 		apiKey: "local-test-only",
 		api: faux.api,
 		models: faux.models,
+	});
+	pi.on("session_start", () => {
+		const pidFile = process.env.PI_SIDEBAR_TEST_PID_FILE;
+		if (pidFile) writeFileSync(pidFile, `${process.pid}\n`);
 	});
 	pi.on("session_shutdown", () => faux.unregister());
 }

@@ -25,6 +25,7 @@ const project = join(temporary, "project-a");
 const otherProject = join(temporary, "project-b");
 const server = `pi-sidebar-${process.pid}`;
 const sessionName = "sidebar-test";
+const pidFile = join(temporary, "pi.pid");
 mkdirSync(agentDir);
 mkdirSync(project);
 mkdirSync(otherProject);
@@ -79,6 +80,7 @@ function tmux(...args) {
 	return result.stdout;
 }
 const capture = () => tmux("capture-pane", "-t", sessionName, "-p");
+const cursorColumn = () => Number(tmux("display-message", "-p", "-t", sessionName, "#{cursor_x}").trim());
 const key = (...keys) => {
 	tmux("send-keys", "-t", sessionName, ...keys);
 	// Bare Escape must resolve before subsequent text can be mistaken for Alt+key.
@@ -99,6 +101,7 @@ const command = [
 	"env",
 	`PI_CODING_AGENT_DIR=${agentDir}`,
 	`PI_SIDEBAR_CORE=${core}`,
+	`PI_SIDEBAR_TEST_PID_FILE=${pidFile}`,
 	...(process.env.PI_SIDEBAR_TEST_LAUNCHER
 		? [process.env.PI_SIDEBAR_TEST_LAUNCHER]
 		: [process.execPath, join(root, "scripts/pi.mjs")]),
@@ -187,8 +190,22 @@ try {
 	console.log("PASS all-project search and cross-project resume");
 
 	key("C-o");
-	tmux("resize-window", "-t", sessionName, "-x", "80", "-y", "24");
-	await waitFor((text) => !text.includes("Enter open"), "Narrow terminal did not collapse sidebar");
+	await waitFor(() => cursorColumn() >= 98, "Sidebar did not receive focus before resize");
+	const piPid = Number(readFileSync(pidFile, "utf8").trim());
+	assert.ok(Number.isSafeInteger(piPid) && piPid > 1 && piPid !== process.pid);
+	process.kill(piPid, "SIGSTOP");
+	try {
+		tmux("resize-window", "-t", sessionName, "-x", "80", "-y", "24");
+		// tmux can clip the sidebar before Pi handles resize or transfers focus.
+		assert.ok(!capture().includes("Enter open"));
+		assert.ok(cursorColumn() >= 10, "Clipped tmux output incorrectly indicated editor focus");
+	} finally {
+		process.kill(piPid, "SIGCONT");
+	}
+	await waitFor(
+		(text) => !text.includes("Enter open") && cursorColumn() < 10,
+		"Pi did not render the narrow layout and return focus to the editor",
+	);
 	literal("draft after resize");
 	await waitFor((text) => text.includes("draft after resize"), "Editor draft did not redraw after resize");
 	tmux("resize-window", "-t", sessionName, "-x", "140", "-y", "32");

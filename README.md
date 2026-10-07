@@ -92,7 +92,7 @@ pnpm test
 pnpm test:tui
 ```
 
-Terminal tests require the patched core and tmux. They use an isolated Pi configuration, temporary sessions, and a local faux provider, without paid model calls. They cover search, draft protection, streaming and busy-switch guards, cross-project resume, resizing, reload, modal focus, and regular/fullscreen transitions.
+Terminal tests require the patched core and tmux. They use an isolated Pi configuration, temporary sessions, and a local faux provider, without paid model calls. They cover search, draft protection, streaming and busy-switch guards, cross-project resume, resizing, reload, modal focus, and regular/fullscreen transitions. A paused-process resize check ensures tmux clipping is not mistaken for Pi having rendered the new layout and restored editor focus.
 
 To exercise an installed launcher or a custom theme:
 
