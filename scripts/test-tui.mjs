@@ -99,8 +99,9 @@ const command = [
 	"env",
 	`PI_CODING_AGENT_DIR=${agentDir}`,
 	`PI_SIDEBAR_CORE=${core}`,
-	process.execPath,
-	join(root, "scripts/pi.mjs"),
+	...(process.env.PI_SIDEBAR_TEST_LAUNCHER
+		? [process.env.PI_SIDEBAR_TEST_LAUNCHER]
+		: [process.execPath, join(root, "scripts/pi.mjs")]),
 	"--no-extensions",
 	"--extension",
 	join(root, "test/faux-provider.ts"),
@@ -134,7 +135,10 @@ try {
 	key("Escape");
 	await setTimeout(150);
 	literal(" still here");
-	assert.ok(capture().includes("unsent draft still here"));
+	await waitFor(
+		(text) => text.includes("unsent draft still here"),
+		"Editor draft did not redraw after returning focus",
+	);
 	assert.equal(readdirSync(dirname(target)).filter((name) => name.endsWith(".jsonl")).length, 2);
 	console.log("PASS Ctrl+O search and Escape preserve the editor draft without starting a model turn");
 
@@ -186,7 +190,7 @@ try {
 	tmux("resize-window", "-t", sessionName, "-x", "80", "-y", "24");
 	await waitFor((text) => !text.includes("Enter open"), "Narrow terminal did not collapse sidebar");
 	literal("draft after resize");
-	assert.ok(capture().includes("draft after resize"));
+	await waitFor((text) => text.includes("draft after resize"), "Editor draft did not redraw after resize");
 	tmux("resize-window", "-t", sessionName, "-x", "140", "-y", "32");
 	await waitFor(
 		(text) => text.includes("Sessions") && text.includes("draft after resize"),
